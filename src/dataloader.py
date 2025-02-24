@@ -23,8 +23,12 @@ def _peek_data_shard(filename):
     if header[0] != 20240801:
         print0("ERROR: magic number mismatch in the data .bin file!")
         print0("---> HINT: Are you passing in a correct file with --input_bin?")
-        print0("---> HINT: Dataset encoding changed recently, re-run data prepro or refer again to README")
-        print0("---> HINT: For example re-run: `python dev/data/tinyshakespeare.py`, then re-try")
+        print0(
+            "---> HINT: Dataset encoding changed recently, re-run data prepro or refer again to README"
+        )
+        print0(
+            "---> HINT: For example re-run: `python dev/data/tinyshakespeare.py`, then re-try"
+        )
         exit(1)
     # assert header[1] == 1, "unsupported version"
     assert header[1] == 7, "unsupported version"
@@ -71,7 +75,14 @@ class TokenDataset(Dataset):
 
 
 class DistributedDataLoader:
-    def __init__(self, filename_pattern: str, B: int, T: int, process_rank: int, num_processes: int):
+    def __init__(
+        self,
+        filename_pattern: str,
+        B: int,
+        T: int,
+        process_rank: int,
+        num_processes: int,
+    ):
         self.process_rank = process_rank
         self.num_processes = num_processes
         self.B = B
@@ -79,7 +90,9 @@ class DistributedDataLoader:
 
         # glob files that match the pattern
         self.files = sorted(glob.glob(filename_pattern))
-        assert len(self.files) > 0, f"did not find any files that match the pattern {filename_pattern}"
+        assert (
+            len(self.files) > 0
+        ), f"did not find any files that match the pattern {filename_pattern}"
 
         # load and validate all data shards, count number of tokens in total
         ntok_total = 0
@@ -90,7 +103,9 @@ class DistributedDataLoader:
         self.ntok_total = ntok_total
 
         if process_rank == 0:
-            print0(f"DataLoader: total number of tokens: {ntok_total:,} across {len(self.files)} files")
+            print0(
+                f"DataLoader: total number of tokens: {ntok_total:,} across {len(self.files)} files"
+            )
 
         self.current_shard = None
         self.reset()
@@ -103,7 +118,10 @@ class DistributedDataLoader:
         # Create dataset and sampler for current shard
         self.dataset = TokenDataset(self.tokens, self.B, self.T)
         self.sampler = DistributedSampler(
-            self.dataset, num_replicas=self.num_processes, rank=self.process_rank, shuffle=True
+            self.dataset,
+            num_replicas=self.num_processes,
+            rank=self.process_rank,
+            shuffle=True,
         )
         self.dataloader = DataLoader(
             self.dataset,
@@ -125,15 +143,22 @@ class DistributedDataLoader:
         # Create new dataset and sampler for the new shard
         self.dataset = TokenDataset(self.tokens, self.B, self.T)
         self.sampler = DistributedSampler(
-            self.dataset, num_replicas=self.num_processes, rank=self.process_rank, shuffle=True
+            self.dataset,
+            num_replicas=self.num_processes,
+            rank=self.process_rank,
+            shuffle=True,
         )
-        self.dataloader = DataLoader(self.dataset, batch_size=1, sampler=self.sampler, num_workers=0)
+        self.dataloader = DataLoader(
+            self.dataset, batch_size=1, sampler=self.sampler, num_workers=0
+        )
         self.iterator = iter(self.dataloader)
 
     def next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
         try:
             x, y = next(self.iterator)
-            return x.squeeze(0), y.squeeze(0)  # Remove batch dimension added by DataLoader
+            return x.squeeze(0), y.squeeze(
+                0
+            )  # Remove batch dimension added by DataLoader
         except StopIteration:
             self.advance()
             x, y = next(self.iterator)

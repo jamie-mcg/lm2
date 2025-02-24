@@ -179,11 +179,17 @@ def main(cfg):
 
                 # Aggregate losses from all nodes
                 val_loss_tensor = torch.tensor(val_loss, device=trainer.device)
-                train_loss_tensor = torch.tensor(trainer.loss.item(), device=trainer.device)
+                train_loss_tensor = torch.tensor(
+                    trainer.loss.item(), device=trainer.device
+                )
 
                 # Sum losses across all nodes
-                torch.distributed.all_reduce(val_loss_tensor, op=torch.distributed.ReduceOp.SUM)
-                torch.distributed.all_reduce(train_loss_tensor, op=torch.distributed.ReduceOp.SUM)
+                torch.distributed.all_reduce(
+                    val_loss_tensor, op=torch.distributed.ReduceOp.SUM
+                )
+                torch.distributed.all_reduce(
+                    train_loss_tensor, op=torch.distributed.ReduceOp.SUM
+                )
 
                 # Calculate mean across nodes
                 world_size = torch.distributed.get_world_size()
@@ -191,7 +197,9 @@ def main(cfg):
                 train_loss = train_loss_tensor.item() / world_size
 
             if int(os.environ["RANK"]) == 0:
-                print0(f"iter {trainer.iter_num}: train loss {train_loss:.5f}, valid loss {val_loss:.5f}")
+                print0(
+                    f"iter {trainer.iter_num}: train loss {train_loss:.5f}, valid loss {val_loss:.5f}"
+                )
 
     trainer.set_callback("on_batch_end", batch_end_callback)
 

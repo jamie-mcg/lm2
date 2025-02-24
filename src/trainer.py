@@ -29,7 +29,16 @@ class Trainer:
         C.grad_norm_clip = 1.0
         return C
 
-    def __init__(self, config, model, optimizer, train_loader, local_rank, grad_accum_steps, iter_num=0):
+    def __init__(
+        self,
+        config,
+        model,
+        optimizer,
+        train_loader,
+        local_rank,
+        grad_accum_steps,
+        iter_num=0,
+    ):
         self.config = config
         self.model = model
         self.optimizer = optimizer
@@ -39,7 +48,11 @@ class Trainer:
         self.device = self.local_rank = local_rank
         self.model = self.model.to(self.device)
 
-        ptdtype = {"float32": torch.float32, "bfloat16": torch.bfloat16, "float16": torch.float16}[config.dtype]
+        ptdtype = {
+            "float32": torch.float32,
+            "bfloat16": torch.bfloat16,
+            "float16": torch.float16,
+        }[config.dtype]
         self.ctx = torch.amp.autocast(device_type="cuda", dtype=ptdtype)
 
         # Initialize training state
@@ -59,7 +72,9 @@ class Trainer:
         current_lr = self.optimizer.param_groups[0]["lr"]
         expected_lr = self.get_lr(iter_num)
         if abs(current_lr - expected_lr) > 1e-6:
-            print0(f"Warning: LR mismatch. Current: {current_lr}, Expected: {expected_lr}")
+            print0(
+                f"Warning: LR mismatch. Current: {current_lr}, Expected: {expected_lr}"
+            )
             # Fix learning rate
             for param_group in self.optimizer.param_groups:
                 param_group["lr"] = expected_lr
@@ -110,9 +125,13 @@ class Trainer:
         if it > self.config.max_iters:
             return min_lr
         # 3) in between, use cosine decay down to min learning rate
-        decay_ratio = (it - self.config.warmup_iters) / (self.config.max_iters - self.config.warmup_iters)
+        decay_ratio = (it - self.config.warmup_iters) / (
+            self.config.max_iters - self.config.warmup_iters
+        )
         assert 0 <= decay_ratio <= 1
-        coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))  # coeff starts at 1 and goes to 0
+        coeff = 0.5 * (
+            1.0 + math.cos(math.pi * decay_ratio)
+        )  # coeff starts at 1 and goes to 0
         return min_lr + coeff * (self.config.learning_rate - min_lr)
 
     def run(self, current_time, iter_num):
@@ -141,11 +160,15 @@ class Trainer:
                 y = y.to(self.device)
 
                 if self.ddp:
-                    model.require_backward_grad_sync = micro_step == self.grad_accum_steps - 1
+                    model.require_backward_grad_sync = (
+                        micro_step == self.grad_accum_steps - 1
+                    )
 
                 # Forward pass
                 with self.ctx:
-                    _, loss, _ = model(x, targets=y, attention_mask=None, iter_num=self.iter_num)
+                    _, loss, _ = model(
+                        x, targets=y, attention_mask=None, iter_num=self.iter_num
+                    )
                     loss = loss / self.grad_accum_steps
                     self.lossf += loss.detach()
 

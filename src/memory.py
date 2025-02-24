@@ -175,9 +175,13 @@ class MemoryModule(nn.Module):
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))  # (B, nh, M, M)
 
         if m != t:
-            raise ValueError(f"Memory length M {m} must be equal sequence length T {t} for causal masking.")
+            raise ValueError(
+                f"Memory length M {m} must be equal sequence length T {t} for causal masking."
+            )
 
-        causal_mask = ~torch.tril(torch.ones((t, m), dtype=torch.bool, device=att.device))  # (T, M)
+        causal_mask = ~torch.tril(
+            torch.ones((t, m), dtype=torch.bool, device=att.device)
+        )  # (T, M)
         causal_mask = causal_mask.unsqueeze(0).unsqueeze(0)  # (1, 1, T, M)
 
         if attention_mask is not None:
@@ -186,7 +190,9 @@ class MemoryModule(nn.Module):
         else:
             combined_mask = causal_mask
 
-        attn_bias = combined_mask.to(dtype=torch.float32).masked_fill(combined_mask, float("-inf"))
+        attn_bias = combined_mask.to(dtype=torch.float32).masked_fill(
+            combined_mask, float("-inf")
+        )
 
         att = att + attn_bias
         att = F.softmax(att, dim=-1)  # (B, n_heads, T, M)
@@ -220,8 +226,8 @@ class MemoryModule(nn.Module):
             # Pass the normalized memory through MLP layers with ReLU activation
             attention_mlp = (
                 # memory.clone()
-                memory
-            )  # Clone memory to avoid in-place modifications
+                memory  # Clone memory to avoid in-place modifications
+            )
             for i, _ in enumerate(self.attention_mlp):
                 attention_mlp = self.attention_mlp[i](
                     attention_mlp

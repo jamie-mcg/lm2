@@ -46,10 +46,17 @@ class MemoryAttention(nn.Module):
         position_embeddings: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # Apply normal self-attention on hidden states
-        attn_output, _, _ = self.self_attn(hidden_states, attention_mask, position_ids=position_ids, position_embeddings=position_embeddings)
+        attn_output, _, _ = self.self_attn(
+            hidden_states,
+            attention_mask,
+            position_ids=position_ids,
+            position_embeddings=position_embeddings,
+        )
 
         # Memory module processing
-        gated_memory, updated_memory = self.memory_module(attn_output, memory, attention_mask)
+        gated_memory, updated_memory = self.memory_module(
+            attn_output, memory, attention_mask
+        )
 
         return gated_memory, updated_memory
 
@@ -76,10 +83,10 @@ class CustomLlamaDecoderLayer(LlamaDecoderLayer):
 
         if self.use_memory and memory is not None:
             attn_output, memory = self.mem_attn(
-                hidden_states=hidden_states, 
-                memory=memory, 
-                attention_mask=attention_mask, 
-                position_ids=position_ids, 
+                hidden_states=hidden_states,
+                memory=memory,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
                 position_embeddings=position_embeddings,
             )
         else:
@@ -124,10 +131,15 @@ class LlamaMem(LlamaForCausalLM):
 
         if self.use_memory:
             if config.memory_slots % config.num_mem_heads != 0:
-                raise ValueError("Memory slots must be divisible by number of memory heads")
+                raise ValueError(
+                    "Memory slots must be divisible by number of memory heads"
+                )
             # Initialize memory but don't move to CUDA yet
             self.memory = torch.stack(
-                [torch.eye(config.memory_slots, requires_grad=False) for _ in range(config.batch_size)]
+                [
+                    torch.eye(config.memory_slots, requires_grad=False)
+                    for _ in range(config.batch_size)
+                ]
             )
             # Register as buffer for proper state dict handling
             self.register_buffer("memory_bank", self.memory)
@@ -138,7 +150,10 @@ class LlamaMem(LlamaForCausalLM):
 
         # Replace default decoder layers with memory-augmented layers
         self.model.layers = nn.ModuleList(
-            [CustomLlamaDecoderLayer(config, layer_idx=i, use_memory=True) for i in range(len(self.model.layers))]
+            [
+                CustomLlamaDecoderLayer(config, layer_idx=i, use_memory=True)
+                for i in range(len(self.model.layers))
+            ]
         )
 
     @classmethod
@@ -153,22 +168,30 @@ class LlamaMem(LlamaForCausalLM):
         return custom_model
 
     @classmethod
-    def from_ckpt(cls, pretrained_ckpt_path: str, config: LlamaConfig, 
-                tokenizer: AutoTokenizer, rank: int, 
-                load_memory: bool=True, resume_training: bool=False) -> nn.Module:
+    def from_ckpt(
+        cls,
+        pretrained_ckpt_path: str,
+        config: LlamaConfig,
+        tokenizer: AutoTokenizer,
+        rank: int,
+        load_memory: bool = True,
+        resume_training: bool = False,
+    ) -> nn.Module:
         """Load model from a checkpoint"""
         try:
             # Load the entire checkpoint on CPU first
-            snapshot_data = torch.load(pretrained_ckpt_path, map_location='cpu')
+            snapshot_data = torch.load(pretrained_ckpt_path, map_location="cpu")
 
             custom_model = cls(config, tokenizer)
 
             # Handle memory loading control
-            model_state = snapshot_data['model_state_dict']
+            model_state = snapshot_data["model_state_dict"]
 
             # Load model state
             custom_model.load_state_dict(model_state, strict=False)
-            missing_keys, unexpected_keys = custom_model.load_state_dict(model_state, strict=False)
+            missing_keys, unexpected_keys = custom_model.load_state_dict(
+                model_state, strict=False
+            )
             if missing_keys or unexpected_keys:
                 print0(f"Missing keys: {missing_keys}")
                 print0(f"Unexpected keys: {unexpected_keys}")
@@ -180,17 +203,20 @@ class LlamaMem(LlamaForCausalLM):
                 print0("===>Loaded pre-trained memory")
             else:
                 custom_model.memory = torch.stack(
-                    [torch.eye(config.memory_slots, requires_grad=False) for _ in range(config.batch_size)]
+                    [
+                        torch.eye(config.memory_slots, requires_grad=False)
+                        for _ in range(config.batch_size)
+                    ]
                 )
                 custom_model.register_buffer("memory_bank", custom_model.memory)
                 print0("===>Initialized fresh memory")
 
             # Restore random states
             try:
-                random.setstate(snapshot_data['random_state'])
+                random.setstate(snapshot_data["random_state"])
 
                 # Restore torch RNG state
-                torch_state = snapshot_data['torch_random_state']
+                torch_state = snapshot_data["torch_random_state"]
                 if isinstance(torch_state, torch.Tensor):
                     torch_state = torch_state.cpu().to(torch.uint8)
                 else:
@@ -198,14 +224,14 @@ class LlamaMem(LlamaForCausalLM):
                 torch.set_rng_state(torch_state)
 
                 # Restore CUDA RNG states
-                cuda_states = snapshot_data['cuda_random_state']
+                cuda_states = snapshot_data["cuda_random_state"]
                 for i, state in enumerate(cuda_states):
                     if isinstance(state, torch.Tensor):
                         state = state.cpu().to(torch.uint8)
                     else:
                         state = torch.ByteTensor(state)
                     torch.cuda.set_rng_state(state, device=i)
-                        
+
             except Exception as e:
                 print0(f"Warning: Failed to restore random states: {str(e)}")
                 print0("Continuing without restoring random states...")
@@ -214,9 +240,11 @@ class LlamaMem(LlamaForCausalLM):
             print0(f"Checkpoint learning rate: {snapshot_data['lr']}")
 
             if resume_training:
-                return (custom_model, 
-                        snapshot_data['optimizer_state_dict'],
-                        snapshot_data['iteration'])
+                return (
+                    custom_model,
+                    snapshot_data["optimizer_state_dict"],
+                    snapshot_data["iteration"],
+                )
 
             return custom_model
 
@@ -255,7 +283,9 @@ class LlamaMem(LlamaForCausalLM):
         # Initialize caching mechanism
         past_key_values = DynamicCache()
         if cache_position is None:
-            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            past_seen_tokens = (
+                past_key_values.get_seq_length() if past_key_values is not None else 0
+            )
             cache_position = torch.arange(
                 past_seen_tokens,
                 past_seen_tokens + inputs_embeds.shape[1],
@@ -291,7 +321,7 @@ class LlamaMem(LlamaForCausalLM):
                 targets.view(-1),
                 ignore_index=self.tokenizer.pad_token_id,
             )
-        
+
         self.memory = memory
         if self.use_memory:
             # self.memory_bank.copy_(self.memory)
@@ -309,8 +339,12 @@ class LlamaMem(LlamaForCausalLM):
             torch.nn.Embedding,
             LlamaRMSNorm,
         )
-        pattern1 = re.compile(r"^transformer\.h\.[0-9]+\.mem_attn\.memory_module\.input_gate_projector\.w$")
-        pattern2 = re.compile(r"^model\.layers\.\d+\.mem_attn\.memory_module\.input_gate_projector\.w$")
+        pattern1 = re.compile(
+            r"^transformer\.h\.[0-9]+\.mem_attn\.memory_module\.input_gate_projector\.w$"
+        )
+        pattern2 = re.compile(
+            r"^model\.layers\.\d+\.mem_attn\.memory_module\.input_gate_projector\.w$"
+        )
 
         for mn, m in self.named_modules():
             for pn, p in m.named_parameters():
@@ -330,7 +364,9 @@ class LlamaMem(LlamaForCausalLM):
         param_dict = {pn: p for pn, p in self.named_parameters()}
         inter_params = decay & no_decay
         union_params = decay | no_decay
-        assert len(inter_params) == 0, f"Parameters {str(inter_params)} in both decay/no_decay sets!"
+        assert (
+            len(inter_params) == 0
+        ), f"Parameters {str(inter_params)} in both decay/no_decay sets!"
         assert (
             len(param_dict.keys() - union_params) == 0
         ), f"Parameters {str(param_dict.keys() - union_params)} not in either set!"
@@ -347,7 +383,9 @@ class LlamaMem(LlamaForCausalLM):
             },
         ]
 
-        optimizer = torch.optim.AdamW(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)
+        optimizer = torch.optim.AdamW(
+            optim_groups, lr=train_config.learning_rate, betas=train_config.betas
+        )
         return optimizer
 
 
